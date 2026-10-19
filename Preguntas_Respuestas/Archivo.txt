@@ -4,3 +4,11 @@ A nivel microscópico se observa que las supervises metálicas presentan irregul
 
 ¿Por qué una sola pulsación humana es interpretada por un microcontrolador de 160 MHz como ráfagas de 20 a 50 cambios de nivel lógico?
 Para el CPU cada intervalo entre rebotes equivale a miles de ciclos, esto es más que suficiente para que el hardware de GPIO detecte el flanco y dispare la interrupción, pero para el microcontrolador una sola pulsación no es un único evento sino una ráfaga de flancos.
+
+Depuración por Ciclos (CCOUNT):
+¿Por qué el uso de millis() o delay() dentro de una ISR constituye una mala práctica de ingeniería?
+La función delay bloquea la ejecución durante un intervalo de tiempo y por eso no debe utilizarse dentro de una ISR, así como tampoco es buena elección millis para medir rebotes dentro de ISR porque depende de servicios temporales del framework y no da presición de ciclo. 
+Una ISR deben ser cortas, deterministas y sin bloqueos, por esto no se recomiendan estas funciones.
+
+¿De qué manera el registro de hardware XTHAL_GET_CCOUNT() provee una marca de tiempo en un solo ciclo de reloj (non-blocking)?
+CCOUNT es un registro especial que se incrementa en cada ciclo de reloj de la CPU.XTHAL_GET_CCOUNT() lee este registro especial y puede dar una marca temporal sin esperar a que transcurra un intervalo.  
