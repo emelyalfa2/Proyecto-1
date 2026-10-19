@@ -1,11 +1,6 @@
 Física del Rebote Mecánico y Depuración:
 ¿Qué ocurre físicamente a nivel microscópico cuando los contactos metálicos de un interruptor se cierran? 
-
-
-
-
-
-
+A nivel microscópico se observa que las supervises metálicas presentan irregularidades, por eso cuando se unen las placas hacen contacto eléctrico solo en pequeñas zonas. Al chocar las placas, la elasticidad de las piezas, las vibraciones mecánicas y las deformaciones pueden provocar que los contactos se separen y vuelvan a unirse varias veces antes de estabilizarse, por lo que se puede generar tensión elétrica (falsos contactos) 
 
 ¿Por qué una sola pulsación humana es interpretada por un microcontrolador de 160 MHz como ráfagas de 20 a 50 cambios de nivel lógico?
 Para el CPU cada intervalo entre rebotes equivale a miles de ciclos, esto es más que suficiente para que el hardware de GPIO detecte el flanco y dispare la interrupción, pero para el microcontrolador una sola pulsación no es un único evento sino una ráfaga de flancos.
