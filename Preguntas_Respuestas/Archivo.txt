@@ -3,17 +3,14 @@ Concurrencia en FreeRTOS: Mutex, Spinlocks y Deadlocks:
 
 Una tarea de FreeRTOS es una entidad planicable: tiene su propia pila, un bloque de control (TCB) y un estado (Running, Ready, Blocked, Suspended). El planificador puede detenerla, expropiarla o dormirla. Una ISR, en cambio, es una excepción de hardware: no es una tarea, no tiene TCB ni estado en las listas del planicador y se ejecuta con prioridad sobre cualquier tarea. vTaskDelay funciona moviendo la tarea que llama a la lista de tareas bloqueadas y cediendo la CPU al planicador. En una ISR no existe una tarea propia que bloquear; además el planificador no puede ejecutarse mientras la excepción está activa. FreeRTOS lo detecta con comprobaciones internas (configASSERT sobre el contexto de interrupción, xPortInIsrContext()), que abortan el programa y generan un panic / Guru Meditation Error. Dentro de una ISR solo se pueden usar las variantes ...FromISR(), que nunca bloquean. Vínculo con el proyecto: La ISR onFalling (button_isr.cpp) no llama a delay, vTaskDelay, Serial ni malloc; solo lee CCOUNT y toma un spinlock. Toda la lógica larga (motor, impresión) corre en contexto de tarea, dentro de los handlers de la FSM.
 
-
 2  - ¿Cuál es la diferencia arquitectónica entre un Mutex de tarea de FreeRTOS (SemaphoreHandle_t) y un Spinlock SMP de hardware (portMUX_TYPE)?        ¿Por qué se debe usar obligatoriamente un Spinlock en lugar de un Mutex para proteger variables compartidas entre el loop() y una                  interrupción?
 
 Un SemaphoreHandle_t (mutex) es un objeto del núcleo: si está ocupado, la tarea que lo pide pasa a Blocked y el planificador ejecuta otra. Requiere contexto de tarea. Un spinlock portMUX_TYPE es una palabra de memoria que se toma con una instrucción atómica de comparar e intercambiar, si está ocupado, el núcleo hace espera activa. Al entrar en la sección crítica, portENTER_CRITICAL además enmascara las interrupciones del núcleo local, de modo que ninguna ISR puede interrumpir al poseedor en ese núcleo, y el spinlock protege contra el otro núcleo (SMP). Es obligatorio usar spinlock entre loop() e ISR porque la ISR no puede bloquearse ni usar un mutex: si loop() tuviera tomado un mutex y la ISR lo necesitara, la ISR no podría esperar y el loop() nunca volvería a correr para liberarlo. Con spinlock la sección crítica es breve, no se puede interrumpir en el mismo núcleo y la ISR puede tomarlo con portENTER_CRITICAL_ISR.
-
 
 3  - Defina el concepto de Inversión de Prioridad en Sistemas Operativos de Tiempo Real. ¿Cómo previene la "Herencia de Prioridad"(Priority             Inheritance) de un Mutex que el sistema se bloquee si una tarea de baja prioridad retiene un recurso que necesita una tarea de alta prioridad?
 
 Ocurre cuando una tarea de alta prioridad H espera un recurso que posee una tarea de baja prioridad L, y una tarea de prioridad media M (que no usa el recurso) expropia a L. Entonces L no avanza, no libera el recurso y H queda efectivamente retrasada por M, sin límite de tiempo, aunque H tenga mayor prioridad (caso Mars Pathfinder, 1997). Con herencia de prioridad, cuando H se bloquea en un mutex que tiene L, el núcleo eleva
 temporalmente la prioridad de L a la de H. Así M no puede expropiar a L, L termina su sección crítica, libera el mutex y recupera su prioridad original. El bloqueo de H queda acotado a la duración de la sección crítica de L. (En FreeRTOS lo implementan los mutex, no los semáforos binarios.) 
-
 
 4  - Enumere las cuatro condiciones de Coffman para que exista un Abrazo Mortal (Deadlock). Describa la secuencia exacta de eventos que causaría        un Deadlock si el bucle principal retiene un Mutex y una ISR intenta adquirir ese mismo Mutex.
 
@@ -21,22 +18,14 @@ Las cuatro condiciones necesarias de un deadlock son: 1. Exclusión mutua: el re
 4. Espera circular: existe un ciclo de actores que se esperan entre sí. 
 Secuencia: (1) loop() ejecuta xSemaphoreTake(m) y entra en su sección crítica; el mutex no enmascara interrupciones. (2) Se dispara la ISR en el mismo núcleo e interrumpe a loop(). (3) La ISR intenta tomar m, que está ocupado; no puede bloquearse, así que o falla o espera activamente. (4) loop() solo puede continuar cuando la ISR termine, y la ISR solo termina cuando loop() libere m: espera circular. Nadie puede ceder, el sistema se congela y el Interrupt Watchdog termina reiniciándolo ("Interrupt wdt timeout on CPU"). La solución es el spinlock con interrupciones enmascaradas durante la sección crítica
 
-
 Arquitectura de memoria y silicio
 1  - El ESP32 ejecuta código desde una memoria Flash SPI externa a través de un controlador de caché. ¿Qué le ocurre a esta caché cuando el             sistema escribe datos en la memoria no volátil (NVS) o realiza una actualización OTA? ¿Por qué omitir la macro IRAM_ATTR en la ISR causa un        colapso del sistema (Guru Meditation Error) durante estas operaciones?
 
 El código se ejecuta desde Flash SPI externa a través de una caché. Para borrar o escribir Flash (NVS, OTA), el sistema debe deshabilitar la caché en ambos núcleos, porque el mismo bus SPI se usa para escribir y para leer instrucciones. Durante esa ventana, el código ubicado en Flash no se puede leer. Si llega una interrupción en ese instante y la ISR está en Flash, la CPU intenta buscar instrucciones en una región cuya caché está apagada y ocurre una excepción del tipo "Cache disabled but cached memory region accessed" (Guru Meditation Error). IRAM_ATTR coloca la función en la IRAM interna, siempre accesible. La ISR tampoco debe llamar funciones de Flash (por ejemplo Serial. print) ni usar constantes en Flash. Esto aplica a interrupciones registradas como seguras para IRAM, que son las que siguen activas durante las operaciones de Flash. Vínculo con el proyecto: onFalling está marcada con IRAM_ATTR y no llama a funciones en Flash; el Serial.printf se usa solo en los handlers de la FSM, en contexto de tarea.
 
-
 2  - El ESP32 posee un bus de datos de 32 bits. Si una ISR actualiza un contador de 64 bits (uint64_t), ¾por qué su lectura en el bucle principal       requiere dos instrucciones máquina de 32 bits separadas? Explique cómo una interrupción que se dispare exactamente entre estas dos                 instrucciones provoca una lectura corrupta (Torn Read).
 
 El Xtensa LX6 del ESP32 tiene registros y bus de 32 bits, un uint64_t se lee con dos instrucciones L32I (parte baja y parte alta), que no son atómicas en conjunto. Ejemplo: el contador vale 0x00000000FFFFFFFF. loop() lee la parte baja (0xFFFFFFFF); la ISR incrementa el contador a 0x0000000100000000, loop() lee la parte alta (0x00000001) y reconstruye 0x00000001FFFFFFFF: un valor que nunca existió, con un error de 2 32. Se evita con una sección crítica (spinlock) durante la lectura, o usando contadores de 32 bits (como en este proyecto). Vínculo con el proyecto: g_pressCount es uint32_t (una sola instrucción de 32 bits) y además se lee dentro del spinlock en pressCount(), así no puede haber una lectura fragmentada.
-
-
-
-
-
-
 
 Física del Rebote Mecánico y Depuración:
 1- ¿Qué ocurre físicamente a nivel microscópico cuando los contactos metálicos de un interruptor se cierran? 
