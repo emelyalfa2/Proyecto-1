@@ -39,16 +39,35 @@ El Xtensa LX6 del ESP32 tiene registros y bus de 32 bits, un uint64_t se lee con
 
 
 Física del Rebote Mecánico y Depuración:
-¿Qué ocurre físicamente a nivel microscópico cuando los contactos metálicos de un interruptor se cierran? 
+1- ¿Qué ocurre físicamente a nivel microscópico cuando los contactos metálicos de un interruptor se cierran? 
 A nivel microscópico se observa que las supervises metálicas presentan irregularidades, por eso cuando se unen las placas hacen contacto eléctrico solo en pequeñas zonas. Al chocar las placas, la elasticidad de las piezas, las vibraciones mecánicas y las deformaciones pueden provocar que los contactos se separen y vuelvan a unirse varias veces antes de estabilizarse, por lo que se puede generar tensión elétrica (falsos contactos) 
 
-¿Por qué una sola pulsación humana es interpretada por un microcontrolador de 160 MHz como ráfagas de 20 a 50 cambios de nivel lógico?
+2- ¿Por qué una sola pulsación humana es interpretada por un microcontrolador de 160 MHz como ráfagas de 20 a 50 cambios de nivel lógico?
 Para el CPU cada intervalo entre rebotes equivale a miles de ciclos, esto es más que suficiente para que el hardware de GPIO detecte el flanco y dispare la interrupción, pero para el microcontrolador una sola pulsación no es un único evento sino una ráfaga de flancos.
 
 Depuración por Ciclos (CCOUNT):
-¿Por qué el uso de millis() o delay() dentro de una ISR constituye una mala práctica de ingeniería?
+3- ¿Por qué el uso de millis() o delay() dentro de una ISR constituye una mala práctica de ingeniería?
 La función delay bloquea la ejecución durante un intervalo de tiempo y por eso no debe utilizarse dentro de una ISR, así como tampoco es buena elección millis para medir rebotes dentro de ISR porque depende de servicios temporales del framework y no da presición de ciclo. 
 Una ISR deben ser cortas, deterministas y sin bloqueos, por esto no se recomiendan estas funciones.
 
-¿De qué manera el registro de hardware XTHAL_GET_CCOUNT() provee una marca de tiempo en un solo ciclo de reloj (non-blocking)?
-CCOUNT es un registro especial que se incrementa en cada ciclo de reloj de la CPU.XTHAL_GET_CCOUNT() lee este registro especial y puede dar una marca temporal sin esperar a que transcurra un intervalo.   
+4- ¿De qué manera el registro de hardware XTHAL_GET_CCOUNT() provee una marca de tiempo en un solo ciclo de reloj (non-blocking)?
+CCOUNT es un registro especial que se incrementa en cada ciclo de reloj de la CPU.XTHAL_GET_CCOUNT() lee este registro especial y puede dar una marca temporal sin esperar a que transcurra un intervalo.
+
+5-El registro de 32 bits CCOUNT se desborda y vuelve a cero (rollover) cada 26,84 segundos. Demuestre matemáticamente por qué la resta de enteros sin signo de 32 bits (currentCycles - isrLastCycle) calcula el tiempo transcurrido de forma perfecta sin importar si ocurre un desbordamiento.
+M = 4294967296
+currentCycles= 50
+irsLastCycle = 2^(32)-100
+              50-( 2^(32)-100)
+              = 50 + 2^(32)-100
+              = 150-2^(32)
+Periféricos de la IdeaBoard y Determinismo Algorítmico
+1- ¿Por qué es necesario configurar el hardware timer LEDC_TIMER_0 con una resolución de 10 bits y una frecuencia específica antes de asignar los canales para controlar el puente H L9110S en los pines IO12 e IO14?
+Es necesario configurar primero el timer porque sino no hay un periodo ni escala para interpretar el duty, una resolución de 10 bits determina 1024 niveles de velocidad y la frecuencia el periodo de conmutación. Y debe hacerse de primero porque le canal no tiene base de tiempo propia.
+
+2- Si el interruptor de paro de emergencia se trasladara del pin IO33 al pin IO34, ¿por qué el circuito dejaría de funcionar por completo a menos que se soldara una
+resistencia externa?
+Dejaría de funcionar porque estos pines son únicamnete de entrada y no tienen ninguna resistencia interna de pull-up o pull-down, por lo que el pin quedaría flotando y dando falsa señal. Por eso es importante soldar una resistencia externa que evite que esto suceda.
+
+3- El proyecto mapea Estados (Filas) y Eventos (Columnas) utilizando un arreglo bidimensional de punteros a funciones (constexprTransition FSM[][]). ¿Por qué el tiempo de evaluación de esta matriz se considera de complejidad constante O(1)? ¿Por qué esto es superior a múltiples sentencias anidadas de switch-case en términos de predicción de bifurcaciones del procesador (Branch Prediction)?
+El tiempo de transición tiene complejidad constante O(1) permite ir directamente a la acción correspondiente mediante los índices del estado y del evento, sin recorrer las transiciones.
+El switch-case anidado puede llegar a reducir evaluaciones condicionales y facilitar el flujo de ejecución, pero la mejorara en bifurcaciones depende las optimizaciones del compilador y como se comporte el procesador.
