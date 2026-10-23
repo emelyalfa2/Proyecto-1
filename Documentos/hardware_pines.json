@@ -1,0 +1,26 @@
+{
+  "project": "banda transportadora",
+  "board": "IdeaBoard (ESP32 WROOM)",
+  "notas": [
+    "Motor DC DG01D mediante driver L9110S integrado en la IdeaBoard",
+    "Jumper de alimentacion en SELECT-Vin con fuente de barril 5V/3A",
+    "El microinterruptor va entre IO33 y GND con INPUT_PULLUP"
+  ],
+  "perifericos": [
+    {
+      "componente": "motor puente H A",
+      "pin": 12,
+      "tipo": "output PWM (ledc canal 0, 10 bits, 1000 Hz)"
+    },
+    {
+      "componente": "motor puente H B",
+      "pin": 14,
+      "tipo": "output PWM (ledc canal 1, 10 bits, 1000 Hz)"
+    },
+    {
+      "componente": "microswitch de paro de emergencia",
+      "pin": 33,
+      "tipo": "input digital con pull-up interno, interrupcion FALLING"
+    }
+  ]
+}
